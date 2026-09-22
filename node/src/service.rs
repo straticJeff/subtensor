@@ -125,7 +125,32 @@ pub fn new_partial(
         })
         .transpose()?;
 
-    let executor = sc_service::new_wasm_executor::<HostFunctions>(&config.executor);
+    let executor = {
+        // RPC runtime-API calls run with `CallContext::Offchain`, so they take
+        // the offchain heap strategy while block import keeps the on-chain one.
+        // A dynamic offchain heap grows on demand, keeping the region wasmtime
+        // must reset on every teardown proportional to what the call actually
+        // touched instead of to the full static allocation.
+        let pages = config
+            .executor
+            .default_heap_pages
+            .unwrap_or(sc_executor::DEFAULT_HEAP_ALLOC_PAGES as u64) as u32;
+        let onchain = sc_executor::HeapAllocStrategy::Static { extra_pages: pages };
+        let offchain = if std::env::var("SUBTENSOR_WASM_OFFCHAIN_DYNAMIC").as_deref() == Ok("1") {
+            sc_executor::HeapAllocStrategy::Dynamic {
+                maximum_pages: Some(pages),
+            }
+        } else {
+            onchain
+        };
+        sc_executor::WasmExecutor::<HostFunctions>::builder()
+            .with_execution_method(config.executor.wasm_method)
+            .with_onchain_heap_alloc_strategy(onchain)
+            .with_offchain_heap_alloc_strategy(offchain)
+            .with_max_runtime_instances(config.executor.max_runtime_instances)
+            .with_runtime_cache_size(config.executor.runtime_cache_size)
+            .build()
+    };
     let (client, backend, keystore_container, task_manager) =
         sc_service::new_full_parts::<Block, RuntimeApi, RuntimeExecutor>(
             config,
