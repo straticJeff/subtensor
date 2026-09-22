@@ -1,0 +1,157 @@
+name: Build optimised node image
+
+# Builds the x86_64 production binary from this branch and publishes it to
+# ghcr.io so it can be swapped in for the official image.
+#
+# Deliberately self-contained: upstream's docker.yml builds on self-hosted
+# `fireactions-turbo-8` runners and its composite action needs R2 sccache
+# credentials, neither of which exist in this fork. This runs entirely on
+# GitHub-hosted runners with no secrets beyond the automatic GITHUB_TOKEN.
+
+on:
+  push:
+    branches: [optimised]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Extra image tag to publish (in addition to :optimised and the sha)"
+        required: false
+        default: ""
+
+concurrency:
+  group: optimised-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: production binary + image (amd64)
+    runs-on: ubuntu-latest
+    # A cold production build (LTO, codegen-units=1) of this workspace is slow
+    # on a 4-core hosted runner. Cached runs are far quicker.
+    timeout-minutes: 350
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Rust target dir for this workspace is far larger than the ~14 GB a
+      # hosted runner leaves free. Reclaim the preinstalled toolchains we do
+      # not use; this is the difference between a build and a disk-full error.
+      - name: Free disk space
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost /opt/hostedtoolcache/CodeQL \
+                      /usr/local/lib/node_modules || true
+          sudo apt-get clean
+          echo "after:"; df -h / | tail -1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            protobuf-compiler clang pkg-config libssl-dev
+
+      - name: Install Rust toolchain
+        run: |
+          # Pinned by rust-toolchain.toml; add the runtime's wasm target.
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add wasm32v1-none
+          rustc -V && cargo -V
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: optimised-amd64
+          # The runtime's wasm artifacts live outside target/, and caching the
+          # whole target dir would blow the 10 GB per-repo cache limit.
+          cache-on-failure: true
+
+      - name: Build production binary
+        env:
+          RUST_BACKTRACE: "1"
+        run: |
+          cargo build -p node-subtensor --profile production --features metadata-hash
+          ls -l target/production/node-subtensor
+
+      # Dockerfile.prebuilt expects the binary at this exact path.
+      - name: Stage binary for the image
+        run: |
+          mkdir -p build/ci_target/amd64
+          cp target/production/node-subtensor build/ci_target/amd64/node-subtensor
+          chmod +x build/ci_target/amd64/node-subtensor
+
+      - name: Verify the optimisation toggles are present in the binary
+        run: |
+          # A silent failure mode worth guarding: if the vendored crates are not
+          # picked up, the binary builds fine but contains none of the patches.
+          missing=0
+          for v in SUBTENSOR_RPC_CACHE_BYTES SUBTENSOR_WASM_OFFCHAIN_DYNAMIC \
+                   SUBTENSOR_STATEDB_FAST_PIN SUBTENSOR_WASM_MAX_INSTANCES \
+                   SUBTENSOR_WASM_WARM_SLOTS SUBTENSOR_WASM_KEEP_RESIDENT; do
+            if strings build/ci_target/amd64/node-subtensor | grep -q "$v"; then
+              echo "  present: $v"
+            else
+              echo "::error::$v missing from the binary"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=optimised
+            type=sha,format=long
+            type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile.prebuilt
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Summary
+        run: |
+          {
+            echo "### Optimised image published"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "All optimisations are **off by default**; enable them with env vars:"
+            echo
+            echo '| env var | suggested | effect |'
+            echo '|---|---|---|'
+            echo '| `SUBTENSOR_STATEDB_FAST_PIN` | `1` | skips the state-db write lock in archive mode (+20% measured) |'
+            echo '| `SUBTENSOR_RPC_CACHE_BYTES` | `4294967296` | per-block RPC result cache + single-flight (+19% measured) |'
+            echo '| `SUBTENSOR_WASM_OFFCHAIN_DYNAMIC` | `1` | dynamic heap for RPC runtime calls |'
+            echo '| `SUBTENSOR_WASM_WARM_SLOTS` | `64` | wasmtime pooling slots kept warm (upstream 4) |'
+            echo '| `SUBTENSOR_WASM_MAX_INSTANCES` | unset | concurrent wasm calls; 144 helps above ~300 rps, hurts below |'
+            echo '| `SUBTENSOR_WASM_KEEP_RESIDENT` | unset | leave at 0; measured worse at every size tested |'
+            echo
+            echo "Also set \`--db-cache 32768\` on the node: measured +20% on its own."
+          } >> "$GITHUB_STEP_SUMMARY"
