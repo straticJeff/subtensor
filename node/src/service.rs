@@ -527,6 +527,7 @@ where
                 grandpa_link.shared_authority_set().clone(),
             )?);
         }
+        let rpc_backend = backend.clone();
         Box::new(move |subscription_task_executor| {
             let eth_deps = crate::rpc::EthDeps {
                 client: client.clone(),
@@ -554,6 +555,7 @@ where
             };
             let deps = crate::rpc::FullDeps {
                 client: client.clone(),
+                backend: rpc_backend.clone(),
                 pool: pool.clone(),
                 command_sink: if sealing.is_some() {
                     Some(command_sink.clone())
