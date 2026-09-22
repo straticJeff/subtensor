@@ -37,7 +37,7 @@ members = [
 	"support/*",
 	"chain-extensions",
 ]
-exclude = ["eco-tests", "vendor/w3f-bls", "vendor/frontier", "vendor/sc-state-db", "vendor/sc-executor-wasmtime", "vendor/kvdb-rocksdb"]
+exclude = ["eco-tests", "vendor/w3f-bls", "vendor/frontier", "vendor/sc-state-db", "vendor/sc-executor-wasmtime", "vendor/kvdb-rocksdb", "vendor/sc-rpc"]
 resolver = "2"
 
 [workspace.package]
@@ -385,7 +385,9 @@ sc-network-light = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", 
 sc-network-sync = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sc-network-transactions = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sc-network-types = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
-sc-rpc = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+# frontier reaches sc-rpc through the opentensor source, so that redirect
+# must point at the vendored copy too, or the graph gets two sc-rpc crates.
+sc-rpc = { path = "vendor/sc-rpc" }
 sc-rpc-api = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sc-rpc-server = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 sc-rpc-spec-v2 = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
@@ -458,4 +460,5 @@ xcm-procedural = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", re
 # second copy of sc-executor-common and fails to compile.
 [patch."https://github.com/RaoFoundation/polkadot-sdk.git"]
 sc-state-db = { path = "vendor/sc-state-db" }
+sc-rpc = { path = "vendor/sc-rpc" }
 sc-executor-wasmtime = { path = "vendor/sc-executor-wasmtime" }
