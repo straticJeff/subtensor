@@ -34,7 +34,7 @@ The single biggest win is a **deployment flag, not code**: the default
 |---|---|---|
 | `SUBTENSOR_STATEDB_FAST_PIN` | `1` | Skip the state-db global write lock in `pin`/`unpin`. Under `ArchiveAll` these mutate nothing, but every RPC call takes the lock twice. Archive nodes only. |
 | `SUBTENSOR_RPC_CACHE_BYTES` | `4294967296` | Per-block result cache for heavy read methods, keyed by (call, SCALE params, block hash), with single-flight so concurrent identical requests share one execution. Entries are pure functions of the key, so they cannot go stale. |
-| `SUBTENSOR_WASM_OFFCHAIN_DYNAMIC` | `1` | Dynamic heap for RPC runtime calls (they run with `CallContext::Offchain`); block import keeps the static on-chain heap. Shrinks the region wasmtime resets per call. |
+| `SUBTENSOR_WASM_OFFCHAIN_DYNAMIC` | **leave unset** | Dynamic heap for RPC runtime calls. **Do not enable.** wasmtime reallocates and copies the whole linear memory on each growth, so a call touching ~7.5 MB memcpys hundreds of MB. Measured under production EVM traffic: **10.74 cores with it, 0.32 without**, for identical work. |
 | `SUBTENSOR_WASM_WARM_SLOTS` | `64` | wasmtime pooling slots kept warm. Upstream keeps 4, so past that it re-maps the copy-on-write image on every instantiation. |
 | `SUBTENSOR_WASM_MAX_INSTANCES` | unset | Concurrent wasm calls (upstream: hard-coded 64). **Rate-dependent**: 144 measured −6% at 200 rps but +12% at 400 rps. Only raise it for genuinely high-concurrency nodes. |
 | `SUBTENSOR_WASM_KEEP_RESIDENT` | unset | `memset` instead of `madvise` on instance teardown. **Leave at 0** — worse at every size tested, and redundant once the dynamic offchain heap is on. |
@@ -44,7 +44,6 @@ Recommended archive-node starting point:
 ```
 SUBTENSOR_STATEDB_FAST_PIN=1
 SUBTENSOR_RPC_CACHE_BYTES=4294967296
-SUBTENSOR_WASM_OFFCHAIN_DYNAMIC=1
 SUBTENSOR_WASM_WARM_SLOTS=64
 ```
 
@@ -62,7 +61,8 @@ container limit.
   for the 22 heavy methods only (it costs a thread handoff, which makes cheap
   sub-millisecond methods ~35% *worse*).
 - `node/src/service.rs` — builds the executor explicitly so the offchain heap
-  strategy can differ from the on-chain one.
+  strategy can differ from the on-chain one. The plumbing is kept, but the
+  dynamic strategy it enables is a trap: see the warning above.
 - `vendor/sc-state-db`, `vendor/sc-executor-wasmtime` — copies of two
   polkadot-sdk crates at the pinned rev, carrying the lock fast-path and the
   pooling knobs. Their dependencies point at the same git rev the workspace
@@ -82,3 +82,21 @@ than a client patch. Both were measured against real state:
 - `delegateInfo_getDelegated` — **5.4 s for a single wallet**; it scans every
   delegate instead of iterating `StakingHotkeys(coldkey)`. This dominates the
   p99 tail of every run.
+
+
+## A caution about the benchmark behind these numbers
+
+The measurements above come from a workload weighted toward metagraph, neuron
+and stake reads. Real production traffic on these nodes turned out to be ~95%
+`eth_getTransactionReceipt` and `eth_getBlockByNumber`, which the result cache
+does not cover at all: it wraps only the subtensor custom methods.
+
+Two lessons, both learned the hard way:
+
+- A benchmark whose method mix does not match production will rank
+  optimisations wrongly. Check the real mix via `substrate_rpc_calls_finished`
+  on the metrics endpoint before trusting any number here.
+- `OFFCHAIN_DYNAMIC` looked mildly positive on a frozen chain and was
+  catastrophic under production traffic. The frozen benchmark did show the
+  anomaly, a patched config burning more CPU than an unpatched one, and it was
+  misattributed to binary version drift rather than investigated.
