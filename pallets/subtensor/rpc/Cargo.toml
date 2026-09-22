@@ -13,6 +13,7 @@ workspace = true
 
 [dependencies]
 codec = { workspace = true, features = ["derive"] }
+log.workspace = true
 jsonrpsee = { workspace = true, features = ["client-core", "server", "macros"] }
 
 # Substrate packages
@@ -28,6 +29,7 @@ subtensor-custom-rpc-runtime-api.workspace = true
 default = ["std"]
 std = [
 	"codec/std",
+	"log/std",
 	"sp-api/std",
 	"sp-runtime/std",
 	"subtensor-custom-rpc-runtime-api/std",
