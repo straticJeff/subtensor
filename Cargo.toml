@@ -37,7 +37,7 @@ members = [
 	"support/*",
 	"chain-extensions",
 ]
-exclude = ["eco-tests", "vendor/w3f-bls", "vendor/frontier", "vendor/sc-state-db", "vendor/sc-executor-wasmtime"]
+exclude = ["eco-tests", "vendor/w3f-bls", "vendor/frontier", "vendor/sc-state-db", "vendor/sc-executor-wasmtime", "vendor/kvdb-rocksdb"]
 resolver = "2"
 
 [workspace.package]
@@ -330,6 +330,9 @@ default = []
 pow-faucet = []
 
 [patch.crates-io]
+# Vendored to make RocksDB's max_open_files and block cache configurable;
+# identical to 0.19.0 otherwise, and both knobs default to upstream values.
+kvdb-rocksdb = { path = "vendor/kvdb-rocksdb" }
 w3f-bls = { path = "vendor/w3f-bls" }
 zstd-sys = { git = "https://github.com/gztensor/zstd-sys" }
 zstd-safe = { git = "https://github.com/gztensor/zstd-safe", rev = "42cc34ef6abe5d35d982f6afefb5d7e4e69f5f18" }
