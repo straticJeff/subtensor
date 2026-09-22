@@ -87,8 +87,6 @@ impl fc_rpc::EthConfig<Block, FullClient> for DefaultEthConfig {
 pub struct FullDeps<P, CT, CIDP> {
     /// The client instance to use.
     pub client: Arc<FullClient>,
-    /// The substrate backend, used by the batched state RPC overrides.
-    pub backend: Arc<crate::client::FullBackend>,
     /// Transaction pool instance.
     pub pool: Arc<P>,
     /// Manual seal command sink
@@ -131,7 +129,6 @@ where
     let mut module = RpcModule::new(());
     let FullDeps {
         client,
-        backend,
         pool,
         command_sink,
         eth,
@@ -165,7 +162,7 @@ where
     }
 
     // Ethereum compatibility RPCs
-    let mut module = create_eth::<_, _, _, DefaultEthConfig>(
+    let module = create_eth::<_, _, _, DefaultEthConfig>(
         module,
         eth,
         subscription_task_executor,
@@ -173,83 +170,5 @@ where
         Some(frontier_pending_consensus_data_provider),
     )?;
 
-    fast_state_rpc::install(&mut module, client.clone(), backend.clone())?;
-
     Ok(module)
-}
-
-/// Batched replacements for the built-in state RPCs.
-///
-/// Upstream `state_queryStorageAt` reads each key through `client.storage()`,
-/// which takes a fresh state snapshot per key: a StateDb pin/unpin pair (both
-/// global write locks) and a local-to-shared trie cache merge (another global
-/// write lock) for every single key. Taking the state once and reading all keys
-/// from it removes that per-key overhead.
-///
-/// Off unless SUBTENSOR_FAST_STATE_RPC=1.
-mod fast_state_rpc {
-    use super::*;
-    use jsonrpsee::types::error::ErrorObjectOwned;
-    use sc_client_api::backend::{Backend as _, StateBackend as _, TrieCacheContext};
-    use sp_blockchain::HeaderBackend as _;
-    use sp_core::storage::{StorageChangeSet, StorageData, StorageKey};
-
-    fn enabled() -> bool {
-        std::env::var("SUBTENSOR_FAST_STATE_RPC")
-            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-            .unwrap_or(false)
-    }
-
-    fn internal(msg: String) -> ErrorObjectOwned {
-        ErrorObjectOwned::owned(1, msg, None::<()>)
-    }
-
-    pub fn install(
-        module: &mut RpcModule<()>,
-        client: Arc<FullClient>,
-        backend: Arc<crate::client::FullBackend>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if !enabled() {
-            return Ok(());
-        }
-
-        // Replace, rather than add: the upstream method must go first or
-        // registration fails on the duplicate name.
-        module.remove_method("state_queryStorageAt");
-        module.register_blocking_method(
-            "state_queryStorageAt",
-            move |params, _ctx, _ext| -> Result<Vec<StorageChangeSet<Hash>>, ErrorObjectOwned> {
-                let mut seq = params.sequence();
-                let keys: Vec<StorageKey> = seq
-                    .next()
-                    .map_err(|e| internal(format!("invalid keys param: {e}")))?;
-                // `at` is optional and defaults to the best block.
-                let at: Hash = match seq.optional_next::<Hash>() {
-                    Ok(Some(at)) => at,
-                    _ => client.info().best_hash,
-                };
-
-                let state = backend
-                    .state_at(at, TrieCacheContext::Untrusted)
-                    .map_err(|e| internal(format!("state unavailable at {at:?}: {e}")))?;
-
-                let mut changes = Vec::with_capacity(keys.len());
-                for key in keys {
-                    let value = state
-                        .storage(&key.0)
-                        .map_err(|e| internal(format!("storage read failed: {e}")))?
-                        .map(StorageData);
-                    changes.push((key, value));
-                }
-
-                Ok(vec![StorageChangeSet { block: at, changes }])
-            },
-        )?;
-
-        log::info!(
-            target: "rpc",
-            "Fast state RPC enabled: state_queryStorageAt takes one state snapshot per call"
-        );
-        Ok(())
-    }
 }
