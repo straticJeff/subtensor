@@ -1,0 +1,15 @@
+# Vendored from polkadot-sdk @ cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a with one change: pin/unpin skip the global
+# write lock under PruningMode::ArchiveAll, where they mutate nothing.
+# Gated behind SUBTENSOR_STATEDB_FAST_PIN=1; default behaviour is upstream.
+[package]
+name = "sc-state-db"
+version = "0.39.0"
+edition = "2021"
+license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+description = "State database maintenance (vendored, archive pin fast-path)"
+
+[dependencies]
+codec = { version = "3.7.5", features = ["derive"], package = "parity-scale-codec" }
+log = "0.4.22"
+parking_lot = "0.12.1"
+sp-core = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }

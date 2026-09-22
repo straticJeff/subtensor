@@ -1,0 +1,22 @@
+# Vendored from polkadot-sdk @ cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a with instance-pool changes:
+#   SUBTENSOR_WASM_MAX_INSTANCES  concurrent runtime calls (upstream: fixed 64)
+#   SUBTENSOR_WASM_WARM_SLOTS     pooling slots kept warm  (upstream: 4)
+#   SUBTENSOR_WASM_KEEP_RESIDENT  memset instead of madvise (upstream: 0)
+# All default to upstream values when unset.
+[package]
+name = "sc-executor-wasmtime"
+version = "0.39.0"
+edition = "2021"
+license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
+description = "WasmRuntime using the Wasmtime JIT (vendored, tunable instance pool)"
+
+[dependencies]
+log = "0.4.22"
+parking_lot = "0.12.1"
+anyhow = "1.0.81"
+sc-allocator = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sc-executor-common = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-runtime-interface = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+sp-wasm-interface = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a", features = ["wasmtime"] }
+wasmtime = { version = "8.0.1", default-features = false, features = ["cache", "cranelift", "jitdump", "parallel-compilation", "pooling-allocator"] }
+rustix = { version = "0.36.7", features = ["fs", "mm", "param", "std", "use-libc"] }

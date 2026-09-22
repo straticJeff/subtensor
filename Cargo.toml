@@ -37,7 +37,7 @@ members = [
 	"support/*",
 	"chain-extensions",
 ]
-exclude = ["eco-tests", "vendor/w3f-bls", "vendor/frontier"]
+exclude = ["eco-tests", "vendor/w3f-bls", "vendor/frontier", "vendor/sc-state-db", "vendor/sc-executor-wasmtime"]
 resolver = "2"
 
 [workspace.package]
@@ -445,3 +445,14 @@ staging-xcm = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev =
 substrate-bip39 = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 substrate-prometheus-endpoint = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
 xcm-procedural = { git = "https://github.com/RaoFoundation/polkadot-sdk.git", rev = "cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a" }
+
+# Locally vendored copies of two polkadot-sdk crates, identical to the pinned
+# rev except for performance patches. Every patch is gated behind an env var and
+# defaults to upstream behaviour, so this build is a drop-in replacement.
+#
+# Their deps point at the SAME git rev the rest of the workspace uses; vendoring
+# them as path crates *inside* a local polkadot-sdk checkout instead produces a
+# second copy of sc-executor-common and fails to compile.
+[patch."https://github.com/RaoFoundation/polkadot-sdk.git"]
+sc-state-db = { path = "vendor/sc-state-db" }
+sc-executor-wasmtime = { path = "vendor/sc-executor-wasmtime" }

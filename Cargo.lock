@@ -15741,7 +15741,6 @@ dependencies = [
 [[package]]
 name = "sc-executor-wasmtime"
 version = "0.39.0"
-source = "git+https://github.com/RaoFoundation/polkadot-sdk.git?rev=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a#cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a"
 dependencies = [
  "anyhow",
  "log",
@@ -16241,7 +16240,6 @@ dependencies = [
 [[package]]
 name = "sc-state-db"
 version = "0.39.0"
-source = "git+https://github.com/RaoFoundation/polkadot-sdk.git?rev=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a#cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -18911,6 +18909,7 @@ name = "subtensor-custom-rpc"
 version = "0.0.2"
 dependencies = [
  "jsonrpsee",
+ "log",
  "parity-scale-codec",
  "sp-api",
  "sp-blockchain",
@@ -21993,3 +21992,13 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
+
+[[patch.unused]]
+name = "sc-executor-wasmtime"
+version = "0.39.0"
+source = "git+https://github.com/RaoFoundation/polkadot-sdk.git?rev=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a#cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a"
+
+[[patch.unused]]
+name = "sc-state-db"
+version = "0.39.0"
+source = "git+https://github.com/RaoFoundation/polkadot-sdk.git?rev=cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a#cacb4310f20c7cac83eb3ccd8ed5a5ad4212608a"
