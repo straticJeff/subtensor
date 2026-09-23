@@ -310,7 +310,13 @@ fn generate_read_options() -> ReadOptions {
 /// Generate the block based options for RocksDB, based on the given `DatabaseConfig`.
 fn generate_block_based_options(config: &DatabaseConfig) -> io::Result<BlockBasedOptions> {
 	let mut block_opts = BlockBasedOptions::default();
-	block_opts.set_block_size(config.compaction.block_size);
+	// Smaller blocks cut read amplification for point lookups: a trie node is a
+	// few hundred bytes, but a read fetches a whole block.
+	let block_size = std::env::var("SUBTENSOR_ROCKSDB_BLOCK_SIZE")
+		.ok()
+		.and_then(|v| v.parse::<usize>().ok())
+		.unwrap_or(config.compaction.block_size);
+	block_opts.set_block_size(block_size);
 	// See https://github.com/facebook/rocksdb/blob/a1523efcdf2f0e8133b9a9f6e170a0dad49f928f/include/rocksdb/table.h#L246-L271 for details on what the format versions are/do.
 	block_opts.set_format_version(5);
 	block_opts.set_block_restart_interval(16);
@@ -336,7 +342,16 @@ fn generate_block_based_options(config: &DatabaseConfig) -> io::Result<BlockBase
 		// Don't evict L0 filter/index blocks from the cache
 		block_opts.set_pin_l0_filter_and_index_blocks_in_cache(true);
 	}
-	block_opts.set_bloom_filter(10.0, true);
+	// `true` here means the block-based filter builder, which RocksDB removed in
+	// 7.0: on 8.x it produces NO filter (the live DB reports filter_policy:
+	// nullptr). `false` selects the full filter, which is what we want.
+	let bloom_bits = std::env::var("SUBTENSOR_ROCKSDB_BLOOM_BITS")
+		.ok()
+		.and_then(|v| v.parse::<f64>().ok())
+		.unwrap_or(10.0);
+	if bloom_bits > 0.0 {
+		block_opts.set_bloom_filter(bloom_bits, false);
+	}
 
 	Ok(block_opts)
 }
